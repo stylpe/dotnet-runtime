@@ -61,6 +61,53 @@ namespace System.Net.NetworkInformation
             }
         }
 
+            
+        /// <summary>
+        /// Gets a value that describes the subnet that this unicast address belongs to
+        /// </summary>
+        public IPNetwork IPNetwork
+        {
+            get
+            {
+                if (PrefixLength == 0)
+                    return Address.AddressFamily == AddressFamily.InterNetwork ? IPAddress.Any : IPAddress.IPv6Any;
+                int maxPrefix = info.Address.AddressFamily == AddressFamily.InterNetwork ? 32 : 128;
+                if (info.PrefixLength == maxPrefix)
+                    return info.Address;
+                if (info.PrefixLength > maxPrefix)
+                    throw new ArgumentOutOfRangeException("PrefixLength");
+
+                IPAddress networkAddress;
+                if (Address.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    uint mask = uint.MaxValue << (maxPrefix - PrefixLength);
+                    mask = IPAddress.HostToNetworkOrder(mask);
+                    networkAddress = new IPAddress(Address.PrivateAddress & mask);
+                }
+                else
+                {
+                    byte[] bytes = Address.GetAddressBytes();
+                    int bitsToBeZeroed = maxPrefix - PrefixLength;
+                    int i = bytes.Length;
+
+                    // Mask whole bytes 
+                    while (i --> 0 && bitsToBeZeroed >= 8)
+                    {
+                        bytes[i] = 0;
+                        bitsToBeZeroed -= 8;
+                    }
+
+                    // Mask last partial byte if needed
+                    if (bitsToBeZeroed > 0)
+                    {
+                        bytes[i] &= (byte)(byte.MaxValue << bitsToBeZeroed);
+                    }
+                    networkAddress = new IPAddress(bytes, Address.ScopeId);
+                }
+                return new IPNetwork(networkAddress, PrefixLength);
+            }
+        }
+
         /// <summary>
         /// Convert a CIDR prefix length to a subnet mask "255.255.255.0" format.
         /// </summary>
