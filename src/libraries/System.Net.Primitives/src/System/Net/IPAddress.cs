@@ -719,6 +719,52 @@ namespace System.Net
             return new IPAddress((uint)HostToNetworkOrder(unchecked((int)address)));
         }
 
+        /// <summary>
+        /// Creates a masked copy of this IPAddress, keeping only <paramref name="prefixLength"/>
+        /// high order bits and zeroing the rest.
+        /// </summary>
+        /// <param name="prefixLength">The CIDR prefix length, number of high order bits to keep.</param>
+        /// <returns>The masked value.</returns>
+        /// <remarks>
+        /// IPv6 addresses will preserve the <see cref="ScopeId"/>. TODO: Is that correct behavior?
+        /// </remarks>
+        internal IPAddress MaskedWithPrefix(int prefixLength)
+        {
+            Debug.Assert(prefixLength >= 0);
+            if (prefixLength == 0)
+            {
+                return IsIPv4 ? Any : IPv6Any;
+            }
+
+            int bitcount = IsIPv4 ? 32 : 128;
+            Debug.Assert(prefixLength <= bitcount);
+            if (prefixLength == bitcount)
+            {
+                return this;
+            }
+
+            if (IsIPv4)
+            {
+                uint mask = uint.MaxValue << -prefixLength;
+                if (BitConverter.IsLittleEndian)
+                {
+                    mask = BinaryPrimitives.ReverseEndianness(mask);
+                }
+                return new IPAddress(PrivateAddress & mask);
+            }
+
+            ushort[] maskedLabels = new ushort[NumberOfLabels];
+            (int unmaskedLabelCount, int prefixRemainder) = int.DivRem(prefixLength, 16);
+            Array.Copy(_numbers, maskedLabels, unmaskedLabelCount);
+            if (prefixRemainder != 0)
+            {
+                ushort partialMask = (ushort)(ushort.MaxValue << -prefixRemainder);
+                maskedLabels[unmaskedLabelCount] = (ushort)(_numbers[unmaskedLabelCount] & partialMask);
+            }
+
+            return new IPAddress(maskedLabels, PrivateScopeId);
+        }
+
         [DoesNotReturn]
         private static byte[] ThrowAddressNullException() => throw new ArgumentNullException("address");
 
